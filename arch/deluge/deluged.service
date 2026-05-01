@@ -1,0 +1,14 @@
+[Unit]
+Description=Deluge Daemon
+Requires=nordvpnd.service
+After=nordvpnd.service
+BindsTo=nordvpnd.service
+
+[Service]
+User=deluge
+ExecStart=/usr/bin/deluged -d
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
