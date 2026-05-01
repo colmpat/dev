@@ -1,11 +1,10 @@
-alias vim=nvim
-
 alias g="git"
 alias ga="git add"
 alias gaa="git add -A"
 alias gs="git status"
 alias gc="git commit"
 alias gcm="git commit -m"
+alias gca="git add -A; git commit -m ."
 alias gco="git checkout"
 alias gcb="git checkout -b"
 alias gd="git diff"
@@ -14,7 +13,7 @@ alias gp="git pull"
 alias gf="git fetch"
 alias gfmom="git fetch; git merge origin/main"
 alias gom="git checkout main"
-alias glb='git reflog show --pretty=format:"%gs ~ %gd" --date=relative | grep checkout | grep -oE "[^ ]+ ~ .*" | awk -F~ "!seen[\$1]++" | tac | awk -F" ~ HEAD@{" "{printf(\"%s: %s\n\", substr(\$3, 1, length(\$2)-1), \$1)}"'
+alias glb='git reflog show --pretty=format:"%gs ~ %gd" --date=relative | grep checkout | grep -oE "[^ ]+ ~ .*" | awk -F~ "!seen[\$1]++" | tail -r | awk -F" ~ HEAD@{" "{printf(\"%s: %s\n\", \$1, substr(\$2, 1, length(\$2)-1))}"'
 gpp() {
     # Get the name of the currently checked out branch
     current_branch=$(git symbolic-ref --short HEAD)
@@ -22,22 +21,188 @@ gpp() {
     # Push the current branch to origin
     git push origin "$current_branch"
 }
-alias gpa="ga . && gcm .; gpp"
-alias gmap="ga . && gcm .; gfmom && gpp"
+alias gpa="gaa && gcm .; gt submit"
+alias gmap="gaa && gcm .; gfmom && gpp"
 
-alias gwap='git reflog show --pretty=format:"%gs ~ %gd" --date=relative | grep checkout | grep -oE "[^ ]+ ~ .*" | awk -F~ "!seen[\$1]++" | head -n 1'
+gwsetup() {
+  for i in {1..6}; do
+    local ws="ws-$i"
+    local worktree_path="$HOME/worktrees/$ws"
 
-__git_complete g __git_main
-__git_complete gco _git_checkout
-__git_complete gcb _git_checkout
+    if [[ -d "$worktree_path" ]]; then
+      echo "$ws already exists, skipping"
+      continue
+    fi
 
-alias mg="make generate"
-alias ml="make lint"
+    echo "setting up $ws in $worktree_path"
+    git worktree add --detach --force "$worktree_path"
+    cd gws
+  done
+}
 
-git config --global --add safe.directory /workspaces/persona
+tmuxsetup() {
+  for i in {1..6}; do
+    local ws="ws-$i"
+    local tmux_session_name="($ws) $ws"
+    local worktree_path="$HOME/worktrees/$ws"
+    if tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -q "^($ws) "; then
+      echo "$ws tmux session already exists, skipping"
+      continue
+    fi
 
-alias e="exa --group-directories-first --icons"
-alias el="exa -T -L 2 --icons --group-directories-first"
+    tmux new-session -d -s "$tmux_session_name" -c "$worktree_path" 2>/dev/null || true
+
+    # Create second window
+    tmux new-window -t "$tmux_session_name:1" -c "$worktree_path"
+    tmux send-keys -t "$tmux_session_name:1" "nvim" C-m
+
+    # Create third window and run claude
+    tmux new-window -t "$tmux_session_name:2" -c "$worktree_path"
+    tmux send-keys -t "$tmux_session_name:2" "claude" C-m
+
+    sleep $i
+    tmux send-keys -t "$tmux_session_name:0" 'gws $(git branch --show-current)' C-m
+    tmux send-keys -t "$tmux_session_name:0" "notion install" C-m
+  done
+
+  # Setup for ~/dev
+  tmux new-session -d -s "dev" -c "$HOME/dev" 2>/dev/null || true
+  tmux new-window -t "dev:1" -c "$HOME/dev"
+  tmux send-keys -t "dev:1" "nvim" C-m
+  tmux new-window -t "dev:2" -c "$HOME/dev"
+  tmux send-keys -t "dev:2" "claude" C-m
+
+  # Setup for ~/init_lua
+  tmux new-session -d -s "init_lua" -c "$HOME/init.lua" 2>/dev/null || true
+  tmux new-window -t "init_lua:1" -c "$HOME/init.lua"
+  tmux send-keys -t "init_lua:1" "nvim" C-m
+  tmux new-window -t "init_lua:2" -c "$HOME/init.lua"
+  tmux send-keys -t "init_lua:2" "claude" C-m
+}
+
+gws() {
+  local raw=false
+  local branch=""
+  for arg in "$@"; do
+    if [[ "$arg" == "--raw" || "$arg" == "-r" ]]; then
+      raw=true
+    else
+      branch="$arg"
+    fi
+  done
+
+  if [ -z "$branch" ]; then
+    echo "Usage: gws [-r|--raw] <branch-name>"
+    return 1
+  fi
+  if $raw; then
+    full_branch="$branch"
+  elif [[ "$branch" == colm-lang--* ]]; then
+    full_branch="$branch"
+  else
+    full_branch="colm-lang--$branch"
+  fi
+
+  gt co main
+  gt co --no-interactive "$full_branch" || { echo "$full_branch does not exist, creating..."; gt create "$full_branch" || return 1; }
+
+  # Rename tmux session if inside one
+  if [ -n "$TMUX" ]; then
+    local current_dir="$PWD"
+    local new_session_name=""
+
+    # Check if we're in a workspace directory (~/worktrees/ws-N)
+    if [[ "$current_dir" =~ $HOME/worktrees/(ws-[0-9]+) ]]; then
+      local workspace="${match[1]}"
+      new_session_name="($workspace) $branch"
+    else
+      new_session_name="$branch"
+    fi
+
+    tmux rename-session "$new_session_name"
+  fi
+
+  [ ! -d "node_modules" ] && notion install
+}
+
+gwreset() {
+  local current_dir="$PWD"
+
+  if [[ "$current_dir" =~ $HOME/worktrees/(ws-[0-9]+) ]]; then
+    local workspace="${match[1]}"
+    gws "$workspace"
+  else
+    echo "Not in a workspace directory (expected ~/worktrees/ws-N)"
+    return 1
+  fi
+}
+
+alias gwr="gwreset"
+
+gwms() {
+  if [ -z "$TMUX" ]; then
+    echo "Not inside a tmux session"
+    return 1
+  fi
+
+  local current_dir="$PWD"
+
+  if [[ "$current_dir" =~ $HOME/worktrees/(ws-[0-9]+) ]]; then
+    gwreset
+    local workspace="${match[1]}"
+    tmux rename-session "($workspace) stale"
+  else
+    echo "Not in a workspace directory (expected ~/worktrees/ws-N)"
+    return 1
+  fi
+}
+
+alias ms="gwms"
+
+gwa() {
+  if [ -z "$1" ]; then
+    echo "Usage: gwa <branch-name>"
+    return 1
+  fi
+
+  local branch="$1"
+  local worktree_path="$HOME/worktrees/$branch"
+
+  # Create a new tmux session with the branch name (detached)
+  tmux new-session -d -s "$branch" 2>/dev/null || true
+
+  # Add worktree
+  git branch "$branch" || true
+  git worktree add "$worktree_path" "$branch"
+
+  # Send commands to the first window of the new tmux session
+  tmux send-keys -t "$branch:0" "cd $worktree_path" C-m
+  tmux send-keys -t "$branch:0" "notion install" C-m
+
+  # Create second window
+  tmux new-window -t "$branch:1" -c "$worktree_path"
+
+  # Create third window and run claude
+  tmux new-window -t "$branch:2" -c "$worktree_path"
+  tmux send-keys -t "$branch:2" "claude" C-m
+
+  # Change the root directory of the tmux session so new windows open here
+  tmux set-option -t "$branch" default-path "$worktree_path"
+
+  # Switch back to the first window
+  tmux select-window -t "$branch:0"
+
+  # Switch to the new session
+  if [ -n "$TMUX" ]; then
+    # We're inside tmux, so use switch-client
+    tmux switch-client -t "$branch"
+  else
+    # We're not in tmux, so attach
+    tmux attach-session -t "$branch"
+  fi
+}
+
+alias e="eza --group-directories-first --icons"
+alias el="eza -T -L 2 --icons --group-directories-first"
 
 export PATH=$PATH:~/.cargo/bin
-alias ops="/workspaces/persona/libs/ops/ops"
