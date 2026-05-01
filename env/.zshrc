@@ -104,4 +104,14 @@ source $ZSH/oh-my-zsh.sh
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
 source ~/.zsh_profile
+eval "$(pyenv init -)"
+# The following lines have been added by Docker Desktop to enable Docker CLI completions.
+fpath=(/Users/clang/.docker/completions $fpath)
+autoload -Uz compinit
+compinit
+# End of Docker CLI completions
+eval "$(rbenv init -)"
+eval "$(direnv hook zsh)"
+export RIPGREP_CONFIG_PATH="/Users/clang/notion-next/.ripgreprc"
+eval "$('/usr/local/bin/node' -r '/Users/clang/notion-next/esbuild-runner.js' '/Users/clang/notion-next/src/cli/main/notion.ts' completion --install)"
 export PATH="$HOME/.local/bin:$PATH"
