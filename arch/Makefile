@@ -1,14 +1,15 @@
 MKFILE_PATH := $(abspath $(lastword $(MAKEFILE_LIST)))
-WP_DIR := "$(dir $(MKFILE_PATH))wallpapers"
+WP_DIR := $(dir $(MKFILE_PATH))wallpapers
+DELUGE_DIR := $(dir $(MKFILE_PATH))deluge
 
 include ../Makefile
 
-all: install update-boot-conf nvim ensure-oh-my-zsh link sync-wallpapers enable-gamemoded configure-nordvpn
+all: install update-boot-conf nvim ensure-oh-my-zsh link sync-wallpapers enable-gamemoded configure-nordvpn configure-deluge
 
 PACMAN_PACKAGES := tmux go steam lua51 luarocks base-devel cmake unzip ninja curl rofi-wayland waybar btop hyprpaper \
-						wireplumber gamemode deluge
+						wireplumber gamemode deluge nodejs npm
+
 YAY_PACKAGES := libation spotify nordvpn-bin 
-# todo: add -> man-pages man-db
 
 .PHONY: install
 install: $(PACMAN_PACKAGES) $(YAY_PACKAGES)
@@ -20,11 +21,11 @@ sync-mirrors:
 
 .PHONY: rebuild-yay
 rebuild-yay:
-	@cd ~ &&\
-	sudo pacman -Rns yay-bin-debug &&\
-	rm -rf yay &&\
-	git clone https://aur.archlinux.org/yay.git &&\
-	cd yay &&\
+	@cd ~ && \
+	sudo pacman -Rns yay-bin-debug || true && \
+	rm -rf yay && \
+	git clone https://aur.archlinux.org/yay.git && \
+	cd yay && \
 	makepkg -si
 
 $(PACMAN_PACKAGES) &:
@@ -46,7 +47,7 @@ update-boot-conf:
 	@echo "TODO: COMMENT OUT nvidia-uvm IN /usr/lib/modules-load.d"
 
 enable-multilib:
-	@echo "TODO: YOU MUST UN-COMMENT the multilib inclusion in the /etc/pacman.conf config file!"
+	@echo "TODO: YOU MUST UN-COMMENT the multilib inclusion in /etc/pacman.conf"
 
 sync-wallpapers:
 	@sudo mkdir -p /wallpapers && sudo cp $(WP_DIR)/* /wallpapers
@@ -63,3 +64,16 @@ configure-nordvpn:
 	@nordvpn set technology nordlynx
 	@nordvpn set killswitch off
 
+.PHONY: configure-deluge
+configure-deluge: install-nftables install-deluge-systemd
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable --now deluged.service
+
+.PHONY: install-deluge-systemd
+install-deluge-systemd:
+	@sudo install -m 644 $(DELUGE_DIR)/deluged.service /etc/systemd/system/deluged.service
+
+.PHONY: install-nftables
+install-nftables:
+	@sudo grep -q "table inet deluge_killswitch" /etc/nftables.conf || \
+	sudo sh -c 'cat $(DELUGE_DIR)/nftables.conf >> /etc/nftables.conf'
