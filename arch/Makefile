@@ -65,15 +65,26 @@ configure-nordvpn:
 	@nordvpn set killswitch off
 
 .PHONY: configure-deluge
-configure-deluge: install-nftables install-deluge-systemd
+configure-deluge: install-nftables install-deluge-systemd install-deluge-config
+	@sudo usermod -aG deluge $$USER
+	@sudo mkdir -p /drives/ssd/500gb/deluge
+	@sudo chown deluge:deluge /drives/ssd/500gb/deluge /drives/hdd/4tb/tor /drives/hdd/4tb/data
+	@sudo chmod 2775 /drives/ssd/500gb/deluge /drives/hdd/4tb/tor /drives/hdd/4tb/data
 	@sudo systemctl daemon-reload
-	@sudo systemctl enable --now deluged.service
+	@sudo systemctl enable --now deluged.service deluge-web.service
 
 .PHONY: install-deluge-systemd
 install-deluge-systemd:
 	@sudo install -m 644 $(DELUGE_DIR)/deluged.service /etc/systemd/system/deluged.service
+	@sudo install -m 644 $(DELUGE_DIR)/deluge-web.service /etc/systemd/system/deluge-web.service
+
+.PHONY: install-deluge-config
+install-deluge-config:
+	@sudo systemctl stop deluged.service deluge-web.service || true
+	@sudo install -m 600 -o deluge -g deluge $(DELUGE_DIR)/core.conf /srv/deluge/.config/deluge/core.conf
+	@sudo rm -f /srv/deluge/.config/deluge/session.state /srv/deluge/.config/deluge/session.state.bak
+	@sudo systemctl start deluged.service deluge-web.service
 
 .PHONY: install-nftables
 install-nftables:
-	@sudo grep -q "table inet deluge_killswitch" /etc/nftables.conf || \
-	sudo sh -c 'cat $(DELUGE_DIR)/nftables.conf >> /etc/nftables.conf'
+	@sudo install -m 644 $(DELUGE_DIR)/nftables.conf /etc/deluge-killswitch.nft
