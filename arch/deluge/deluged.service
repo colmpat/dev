@@ -6,6 +6,7 @@ After=nordvpnd.service
 [Service]
 User=deluge
 ExecStartPre=+/usr/sbin/nft -f /etc/deluge-killswitch.nft
+ExecStartPre=+/etc/deluge-configure-interfaces.sh
 ExecStart=/usr/bin/deluged -d
 Restart=always
 RestartSec=5

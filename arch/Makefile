@@ -77,6 +77,7 @@ configure-deluge: install-nftables install-deluge-systemd install-deluge-config
 install-deluge-systemd:
 	@sudo install -m 644 $(DELUGE_DIR)/deluged.service /etc/systemd/system/deluged.service
 	@sudo install -m 644 $(DELUGE_DIR)/deluge-web.service /etc/systemd/system/deluge-web.service
+	@sudo install -m 755 $(DELUGE_DIR)/configure-interfaces.sh /etc/deluge-configure-interfaces.sh
 
 .PHONY: install-deluge-config
 install-deluge-config:
